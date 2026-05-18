@@ -17,6 +17,7 @@
 #define DAY_COUNT 7
 #define SLOT_COUNT_PER_DAY 48
 #define MAX_CREDIT_OVERFLOW 3
+#define MAX_TREE_NODES 300000
 
 typedef struct {
     int day;        /* 0=Mon ... 6=Sun */
@@ -58,6 +59,15 @@ typedef struct {
     Timetable current;
 } SearchNode;
 
+typedef struct TreeNode {
+    int level;
+    Timetable state;
+    const Course *decision_course;
+    int took_course;
+    struct TreeNode *include_child;
+    struct TreeNode *exclude_child;
+} TreeNode;
+
 typedef struct {
     Timetable items[MAX_RESULTS];
     int count;
@@ -69,6 +79,9 @@ typedef struct {
     const Preference *pref;
     ResultSet *out;
     int suffix_credits[MAX_COURSES + 1];
+    int tree_node_count;
+    int tree_node_limit;
+    TreeNode *root;
 } SearchContext;
 
 static int g_self_test = 0;
@@ -91,6 +104,9 @@ static int timetable_has_matching_token(const Timetable *tt, const char *token);
 static int timetable_has_same_group(const Timetable *tt, const Course *course);
 static int can_still_satisfy_all_must(const SearchContext *ctx, int idx, const Timetable *tt);
 static int all_must_include_satisfied(const Timetable *tt, const Preference *pref);
+static TreeNode *create_tree_node(SearchContext *ctx, int level, const Timetable *state, const Course *course, int took_course);
+static void destroy_tree(TreeNode *node);
+static void build_and_score_tree(SearchContext *ctx, TreeNode *node);
 static void print_course(const Course *c);
 static void print_timetable(const Timetable *tt, int rank);
 static void delete_file_if_exists(const char *path);
@@ -553,19 +569,47 @@ static int exceeds_credit_limit(const Preference *pref, int total_credits) {
     return total_credits > pref->target_credits + MAX_CREDIT_OVERFLOW;
 }
 
-static void dfs_generate(SearchContext *ctx, int idx, Timetable *tt) {
-    SearchNode node;
+static TreeNode *create_tree_node(SearchContext *ctx, int level, const Timetable *state, const Course *course, int took_course) {
+    TreeNode *node;
+    node = (TreeNode *)malloc(sizeof(TreeNode));
+    if (node == NULL) {
+        return NULL;
+    }
+    memset(node, 0, sizeof(*node));
+    node->level = level;
+    node->state = *state;
+    node->decision_course = course;
+    node->took_course = took_course;
+    ctx->tree_node_count++;
+    return node;
+}
 
-    node.level = idx;
-    node.current = *tt;
+static void destroy_tree(TreeNode *node) {
+    if (node == NULL) return;
+    destroy_tree(node->include_child);
+    destroy_tree(node->exclude_child);
+    free(node);
+}
 
-    if (isLeaf(&node, ctx->pref)) {
-        if (all_must_include_satisfied(tt, ctx->pref)) {
-            tt->score = scoreTimetable(tt, ctx->pref);
-            insertResult(ctx->out, tt, ctx->pref->top_n);
+static void build_and_score_tree(SearchContext *ctx, TreeNode *node) {
+    int idx;
+    SearchNode eval_node;
+    Timetable next_state;
+    Course *course;
+
+    if (node == NULL) return;
+    idx = node->level;
+
+    eval_node.level = idx;
+    eval_node.current = node->state;
+
+    if (isLeaf(&eval_node, ctx->pref)) {
+        if (all_must_include_satisfied(&eval_node.current, ctx->pref)) {
+            eval_node.current.score = scoreTimetable(&eval_node.current, ctx->pref);
+            insertResult(ctx->out, &eval_node.current, ctx->pref->top_n);
         }
         /* continue exploring only if still under small overflow limit */
-        if (exceeds_credit_limit(ctx->pref, tt->total_credits)) {
+        if (exceeds_credit_limit(ctx->pref, eval_node.current.total_credits)) {
             return;
         }
     }
@@ -574,24 +618,33 @@ static void dfs_generate(SearchContext *ctx, int idx, Timetable *tt) {
         return;
     }
 
-    if (!can_still_satisfy_all_must(ctx, idx, tt)) {
+    if (!can_still_satisfy_all_must(ctx, idx, &eval_node.current)) {
         return;
     }
 
-    if (!can_reach_target_with_suffix(ctx, idx, tt->total_credits)) {
+    if (!can_reach_target_with_suffix(ctx, idx, eval_node.current.total_credits)) {
         return;
     }
 
-    {
-        Course *course = (Course *)&ctx->courses[idx];
+    course = (Course *)&ctx->courses[idx];
 
-        if (!exceeds_credit_limit(ctx->pref, tt->total_credits + course->credits) && addCourse(tt, course)) {
-            dfs_generate(ctx, idx + 1, tt);
-            removeCourse(tt, course);
+    next_state = eval_node.current;
+    if (!exceeds_credit_limit(ctx->pref, next_state.total_credits + course->credits) && addCourse(&next_state, course)) {
+        node->include_child = create_tree_node(ctx, idx + 1, &next_state, course, 1);
+        if (node->include_child != NULL) {
+            build_and_score_tree(ctx, node->include_child);
+            destroy_tree(node->include_child);
+            node->include_child = NULL;
         }
+    }
 
-        if (!course->is_required) {
-            dfs_generate(ctx, idx + 1, tt);
+    if (!course->is_required) {
+        next_state = eval_node.current;
+        node->exclude_child = create_tree_node(ctx, idx + 1, &next_state, course, 0);
+        if (node->exclude_child != NULL) {
+            build_and_score_tree(ctx, node->exclude_child);
+            destroy_tree(node->exclude_child);
+            node->exclude_child = NULL;
         }
     }
 }
@@ -606,6 +659,7 @@ void createSch(const Course *courses, int course_count, const Preference *pref, 
     ctx.course_count = course_count;
     ctx.pref = pref;
     ctx.out = out;
+    ctx.tree_node_limit = MAX_TREE_NODES;
 
     ctx.suffix_credits[course_count] = 0;
     for (i = course_count - 1; i >= 0; --i) {
@@ -614,7 +668,12 @@ void createSch(const Course *courses, int course_count, const Preference *pref, 
 
     createTimetable(&tt);
     memset(out, 0, sizeof(*out));
-    dfs_generate(&ctx, 0, &tt);
+    ctx.root = create_tree_node(&ctx, 0, &tt, NULL, 0);
+    if (ctx.root != NULL) {
+        build_and_score_tree(&ctx, ctx.root);
+        destroy_tree(ctx.root);
+    }
+    printf("[TREE] explicit nodes created: %d\n", ctx.tree_node_count);
 }
 
 static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_cap, Preference *pref) {
