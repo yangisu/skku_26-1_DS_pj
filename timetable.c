@@ -109,6 +109,7 @@ static int timetable_has_matching_token(const Timetable *tt, const char *token);
 static int timetable_has_same_group(const Timetable *tt, const Course *course);
 static int can_still_satisfy_all_must(const SearchContext *ctx, int idx, const Timetable *tt);
 static int all_must_include_satisfied(const Timetable *tt, const Preference *pref);
+static int course_matches_any_user_must(const Course *course, const Preference *pref);
 static TreeNode *create_tree_node(SearchContext *ctx, int level, const Timetable *state, const Course *course, int took_course);
 static void destroy_tree(TreeNode *node);
 static void build_and_score_tree(SearchContext *ctx, TreeNode *node);
@@ -643,14 +644,12 @@ static void build_and_score_tree(SearchContext *ctx, TreeNode *node) {
         }
     }
 
-    if (!course->is_required) {
-        next_state = eval_node.current;
-        node->exclude_child = create_tree_node(ctx, idx + 1, &next_state, course, 0);
-        if (node->exclude_child != NULL) {
-            build_and_score_tree(ctx, node->exclude_child);
-            destroy_tree(node->exclude_child);
-            node->exclude_child = NULL;
-        }
+    next_state = eval_node.current;
+    node->exclude_child = create_tree_node(ctx, idx + 1, &next_state, course, 0);
+    if (node->exclude_child != NULL) {
+        build_and_score_tree(ctx, node->exclude_child);
+        destroy_tree(node->exclude_child);
+        node->exclude_child = NULL;
     }
 }
 
@@ -658,9 +657,23 @@ void createSch(const Course *courses, int course_count, const Preference *pref, 
     SearchContext ctx;
     Timetable tt;
     int i;
+    Course ordered[MAX_COURSES];
+    int w = 0;
 
     memset(&ctx, 0, sizeof(ctx));
-    ctx.courses = courses;
+    /* Root-near branching priority: user-required (--must) courses first. */
+    for (i = 0; i < course_count; ++i) {
+        if (course_matches_any_user_must(&courses[i], pref)) {
+            ordered[w++] = courses[i];
+        }
+    }
+    for (i = 0; i < course_count; ++i) {
+        if (!course_matches_any_user_must(&courses[i], pref)) {
+            ordered[w++] = courses[i];
+        }
+    }
+
+    ctx.courses = ordered;
     ctx.course_count = course_count;
     ctx.pref = pref;
     ctx.out = out;
@@ -764,6 +777,9 @@ static void print_usage(void) {
     printf("  must token example:\n");
     printf("    COM3026     -> any one section of COM3026\n");
     printf("    COM3026-02  -> exact section COM3026-02\n");
+    printf("  required policy:\n");
+    printf("    Only --must tokens are treated as required constraints.\n");
+    printf("    Category labels (e.g., 전필/전선/일반) are not auto-forced.\n");
     printf("  note: --top 0 means up to MAX_RESULTS(%d)\n", MAX_RESULTS);
 }
 
@@ -1095,6 +1111,16 @@ static int all_must_include_satisfied(const Timetable *tt, const Preference *pre
         if (!timetable_has_matching_token(tt, pref->must_include_codes[i])) return 0;
     }
     return 1;
+}
+
+static int course_matches_any_user_must(const Course *course, const Preference *pref) {
+    int i;
+    for (i = 0; i < pref->must_include_count; ++i) {
+        if (course_matches_must_token(course, pref->must_include_codes[i])) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static const char *day_name(int day) {
