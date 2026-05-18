@@ -16,7 +16,6 @@
 #define MAX_MUST_INCLUDE 32
 #define DAY_COUNT 7
 #define SLOT_COUNT_PER_DAY 48
-#define MAX_CREDIT_OVERFLOW 3
 #define MAX_TREE_NODES 300000
 #define MIN_TARGET_CREDITS 1
 #define MAX_TARGET_CREDITS 30
@@ -572,7 +571,7 @@ static int can_reach_target_with_suffix(const SearchContext *ctx, int idx, int c
 }
 
 static int exceeds_credit_limit(const Preference *pref, int total_credits) {
-    return total_credits > pref->target_credits + MAX_CREDIT_OVERFLOW;
+    return total_credits > pref->target_credits;
 }
 
 static TreeNode *create_tree_node(SearchContext *ctx, int level, const Timetable *state, const Course *course, int took_course) {
@@ -610,14 +609,13 @@ static void build_and_score_tree(SearchContext *ctx, TreeNode *node) {
     eval_node.current = node->state;
 
     if (isLeaf(&eval_node, ctx->pref)) {
-        if (all_must_include_satisfied(&eval_node.current, ctx->pref)) {
+        if (eval_node.current.total_credits == ctx->pref->target_credits &&
+            all_must_include_satisfied(&eval_node.current, ctx->pref)) {
             eval_node.current.score = scoreTimetable(&eval_node.current, ctx->pref);
             insertResult(ctx->out, &eval_node.current, ctx->pref->top_n);
         }
-        /* continue exploring only if still under small overflow limit */
-        if (exceeds_credit_limit(ctx->pref, eval_node.current.total_credits)) {
-            return;
-        }
+        /* Exact-credit policy: stop exploring below this node once target is reached/exceeded. */
+        return;
     }
 
     if (idx >= ctx->course_count) {

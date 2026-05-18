@@ -136,7 +136,7 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 노드 확장 중단(가지치기) 조건:
 - 남은 과목으로 목표학점 도달 불가 (`can_reach_target_with_suffix`)
 - 앞으로 가도 `--must`를 만족시킬 수 없음 (`can_still_satisfy_all_must`)
-- 목표학점 초과 폭이 제한 초과
+- 목표학점을 초과하면 즉시 중단 (`exceeds_credit_limit`)
 
 결과 저장 조건:
 - `isLeaf`로 목표학점 이상 도달
@@ -268,12 +268,12 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 실행 결과 전체(원문):
 ```text
 Loaded courses: 26
-[TREE] explicit nodes created: 348
+[TREE] explicit nodes created: 26
 
 ========== Rank 1 ==========
-Total Credits: 21
+Total Credits: 18
 Score: 1200.00
-Courses (7):
+Courses (6):
   - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
       time: Fri 10:30-11:45
   - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
@@ -290,15 +290,13 @@ Courses (7):
   - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
       time: Fri 12:00-13:15
       time: Fri 13:30-14:45
-  - AAI3006-01 | 기계학습 | 국제어수업 | 3cr
-      time: Mon 18:00-19:15
 
 ========== Rank 2 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
+Total Credits: 18
+Score: 1140.00
+Courses (6):
+  - COM2002-01 | 기본프로그래밍 | 국제어수업 | 3cr
+      time: Wed 13:30-14:45
   - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
       time: Tue 09:00-10:15
       time: Tue 10:30-11:45
@@ -313,197 +311,6 @@ Courses (7):
   - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
       time: Fri 12:00-13:15
       time: Fri 13:30-14:45
-  - COE2002-01 | 생성형AI기초 | 일반수업 | 3cr
-      time: (no fixed slot)
-
-========== Rank 3 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COE2003-01 | 생성형AI융합캡스톤프로젝트 | 일반수업 | 3cr
-      time: (no fixed slot)
-
-========== Rank 4 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COM3006-01 | 컴퓨터네트워크 | 일반수업 | 3cr
-      time: Thu 18:00-19:15
-      time: Thu 19:30-20:45
-
-========== Rank 5 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COM3007-01 | 소프트웨어공학 | 일반수업 | 3cr
-      time: Mon 16:30-17:45
-
-========== Rank 6 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COM3029-01 | 클라우드컴퓨팅개론 | 일반수업 | 3cr
-      time: Fri 15:00-16:15
-      time: Fri 16:30-17:45
-
-========== Rank 7 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COM3035-01 | 데이터과학및분석소개 | 일반수업 | 3cr
-      time: Mon 18:00-19:15
-      time: Mon 19:30-20:45
-
-========== Rank 8 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COM3037-01 | 글로벌인공지능교육트렌드분석 | 일반수업 | 3cr
-      time: Fri 18:00-19:15
-      time: Fri 19:30-20:45
-
-========== Rank 9 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COM3038-01 | 3차원비전의이해및프로그래밍 | 일반수업 | 3cr
-      time: Tue 16:30-17:45
-
-========== Rank 10 ==========
-Total Credits: 21
-Score: 1200.00
-Courses (7):
-  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
-      time: Fri 10:30-11:45
-  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
-      time: Tue 09:00-10:15
-      time: Tue 10:30-11:45
-  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
-      time: Mon 09:00-10:15
-      time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
-      time: Fri 12:00-13:15
-      time: Fri 13:30-14:45
-  - COM3040-01 | 인공지능소프트웨어프로젝트 | 일반수업 | 3cr
-      time: Mon 18:00-19:15
-      time: Mon 19:30-20:45
 ```
 
 ### 14-3. 현재 실행 결과 출력 형태
