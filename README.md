@@ -259,16 +259,261 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 .\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 3 --must "COM2002-01,COM2003,COM2015,COM2020,COM2023,COM3001"
 ```
 
-### 14-2. 실행 결과 요약
-- 케이스 A (`COM2002` 분반 자유):
-  - 로그: `Loaded courses: 26`, `[TREE] explicit nodes created: 348`
-  - 상위 결과에서 기본프로그래밍은 `COM2002-02` 분반이 선택됨
-  - Top 결과는 6개 필수 + 추가 1과목 형태로 총 21학점
-- 케이스 B (`COM2002-01` 분반 고정):
-  - 로그: `Loaded courses: 26`, `[TREE] explicit nodes created: 177`
-  - 지정한 `COM2002-01`이 포함된 시간표가 정상 생성됨
-  - 역시 상위 결과는 총 21학점
+### 14-2. 요청 조건 실행 (가중치: 늦은 시작만 높게)
+실행 명령:
+```powershell
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 10 --w-free 0 --w-late 100 --w-rating 0 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
+```
 
-참고:
-- 현재 구현은 `target-credits`를 만족한 뒤에도 일정 범위(최대 +3학점)까지 탐색을 이어갈 수 있어, `18`을 넣어도 `21`학점 결과가 상위로 나올 수 있습니다.
-- 위 두 테스트 모두 6개 필수 과목(`--must`)이 전부 포함된 시간표만 출력되는 것을 확인했습니다.
+실행 결과 전체(원문):
+```text
+Loaded courses: 26
+[TREE] explicit nodes created: 348
+
+========== Rank 1 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - AAI3006-01 | 기계학습 | 국제어수업 | 3cr
+      time: Mon 18:00-19:15
+
+========== Rank 2 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COE2002-01 | 생성형AI기초 | 일반수업 | 3cr
+      time: (no fixed slot)
+
+========== Rank 3 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COE2003-01 | 생성형AI융합캡스톤프로젝트 | 일반수업 | 3cr
+      time: (no fixed slot)
+
+========== Rank 4 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3006-01 | 컴퓨터네트워크 | 일반수업 | 3cr
+      time: Thu 18:00-19:15
+      time: Thu 19:30-20:45
+
+========== Rank 5 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3007-01 | 소프트웨어공학 | 일반수업 | 3cr
+      time: Mon 16:30-17:45
+
+========== Rank 6 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3029-01 | 클라우드컴퓨팅개론 | 일반수업 | 3cr
+      time: Fri 15:00-16:15
+      time: Fri 16:30-17:45
+
+========== Rank 7 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3035-01 | 데이터과학및분석소개 | 일반수업 | 3cr
+      time: Mon 18:00-19:15
+      time: Mon 19:30-20:45
+
+========== Rank 8 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3037-01 | 글로벌인공지능교육트렌드분석 | 일반수업 | 3cr
+      time: Fri 18:00-19:15
+      time: Fri 19:30-20:45
+
+========== Rank 9 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3038-01 | 3차원비전의이해및프로그래밍 | 일반수업 | 3cr
+      time: Tue 16:30-17:45
+
+========== Rank 10 ==========
+Total Credits: 21
+Score: 1200.00
+Courses (7):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
+      time: Wed 18:00-19:15
+      time: Wed 19:30-20:45
+  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
+      time: Thu 13:30-14:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3040-01 | 인공지능소프트웨어프로젝트 | 일반수업 | 3cr
+      time: Mon 18:00-19:15
+      time: Mon 19:30-20:45
+```
+
+### 14-3. 현재 실행 결과 출력 형태
+프로그램 출력은 아래 순서로 고정됩니다.
+1. `Loaded courses: <개수>`
+2. `[TREE] explicit nodes created: <노드 수>`
+3. `Rank 1..N` 블록 반복
+4. 각 Rank 블록 내부:
+- `Total Credits`
+- `Score`
+- `Courses (k)` (시간표에 담긴 과목 수)
+- 과목별 라인: `과목코드 | 과목명 | 수업구분 | 학점`
+- 시간 라인: `time: 요일 시작-종료` (복수 시간대면 여러 줄)
