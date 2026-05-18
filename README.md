@@ -51,22 +51,23 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 
 ## 7. 실행 방법
 ```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 5
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 5
 ```
 
 ### 주요 옵션
 - `--xlsx <path>` : 입력 엑셀 파일 경로(필수)
-- `--target-credits <N>` : 목표 학점 (기본 18)
+- `--max-courses <N>` : 시간표에 담을 과목 수 (기본 6)
 - `--top <N>` : 출력할 시간표 개수 (`0`이면 최대 `MAX_RESULTS`까지 출력)
 - `--w-free <N>` : 공강 선호 가중치
 - `--w-late <N>` : 늦은 시작 선호 가중치
 - `--w-rating <N>` : 평점 선호 가중치
 - `--must TOKEN1,TOKEN2,...` : 반드시 포함할 과목(여러 개 가능)
+- `--pool TOKEN1,TOKEN2,...` : 탐색 후보 과목 집합(예: 10개 입력)
 - `--self-test` : 내부 핵심 기능 테스트 실행
 
 `N` 형식/범위:
 - 형식: `N`은 공백 없는 10진 정수(예: `0`, `5`, `18`)
-- `--target-credits N`: `1..30`
+- `--max-courses N`: `1..16`
 - `--top N`: `0..512` (`0`은 가능한 결과를 최대치까지 출력)
 - `--w-free N`: `0..100`
 - `--w-late N`: `0..100`
@@ -81,11 +82,20 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 - 이 프로그램에서 "필수"는 **오직 `--must`로 입력한 과목**을 의미합니다.
 - 전공/일반/전필 같은 이수구분 텍스트는 **자동 필수 강제에 사용하지 않습니다**.
 - 트리 상단(루트 근처)에서 `--must` 관련 과목들을 먼저 분기한 뒤, 나머지 과목으로 확장합니다.
+- 결과는 **정확히 `--max-courses`개 과목**인 시간표만 출력합니다.
 
 분반 처리 규칙:
 - 같은 과목 그룹(예: `COM3026`)의 분반은 시간표 1개에 **1개만** 들어갑니다.
 - 따라서 분반이 3개인 과목을 `--must COM3026`으로 주면, 3개 분반 중 하나를 선택한 가지들로 시간표가 분화됩니다.
 - `--must`를 사용하고 `--top`을 따로 주지 않으면, 프로그램은 가능한 결과를 넓게 보여주기 위해 자동으로 최대치(`MAX_RESULTS`)까지 출력합니다.
+
+10개 후보 중 6개 생성 예시:
+```powershell
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 10 --w-free 0 --w-late 100 --w-rating 0 --pool "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001,COM3006,COM3007,COM3029,COM3035" --must "COM2002,COM2003,COM2015,COM2020"
+```
+- `--pool`의 10개 안에서만 조합
+- `--must` 4개는 고정 포함
+- 남은 2자리를 가중치 점수 기준으로 분화/정렬
 
 ## 7-1. 코드 흐름(트리가 실제로 어떻게 진행되는지)
 1. `main`이 인자를 파싱하고 `loadCoursesFromXlsx`로 과목 배열을 만듭니다.
@@ -122,7 +132,7 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 ## 7-3. 기본 자료형(ADT) 구조 요약
 - `TimeSlot`: 요일/시작분/종료분
 - `Course`: 과목 코드, 이름, 카테고리, 학점, 평점, 시간슬롯들
-- `Preference`: 목표학점, top_n, 가중치, `--must` 토큰 목록
+- `Preference`: 과목 수 제한(`max_courses`), top_n, 가중치, `--must`/`--pool` 토큰 목록
 - `Timetable`: 현재 담긴 과목 목록, 총학점, 시간 점유표, 점수
 - `TreeNode`: 명시적 탐색 노드
 - `ResultSet`: 최종 후보 시간표 상위 목록
@@ -134,12 +144,12 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 - 실패 사유: 시간 충돌(`isConflict`) 또는 같은 과목 그룹 분반 중복
 
 노드 확장 중단(가지치기) 조건:
-- 남은 과목으로 목표학점 도달 불가 (`can_reach_target_with_suffix`)
+- 남은 후보로 `max_courses`를 채울 수 없음 (`can_reach_target_with_suffix`)
 - 앞으로 가도 `--must`를 만족시킬 수 없음 (`can_still_satisfy_all_must`)
-- 목표학점을 초과하면 즉시 중단 (`exceeds_credit_limit`)
+- 과목 수가 `max_courses`를 초과하면 즉시 중단 (`exceeds_credit_limit`)
 
 결과 저장 조건:
-- `isLeaf`로 목표학점 이상 도달
+- `isLeaf`로 과목 수 `max_courses` 도달
 - `all_must_include_satisfied`로 `--must` 전부 충족
 - `scoreTimetable` 점수 계산 후 `insertResult`로 상위 결과 유지
 
@@ -252,17 +262,17 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 ```
 2. 분반 자유(기본프로그래밍은 아무 분반이나 허용):
 ```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 10 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 10 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
 ```
 3. 분반 고정(기본프로그래밍 01분반 강제):
 ```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 3 --must "COM2002-01,COM2003,COM2015,COM2020,COM2023,COM3001"
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 3 --must "COM2002-01,COM2003,COM2015,COM2020,COM2023,COM3001"
 ```
 
 ### 14-2. 요청 조건 실행 (가중치: 늦은 시작만 높게)
 실행 명령:
 ```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 10 --w-free 0 --w-late 100 --w-rating 0 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 10 --w-free 0 --w-late 100 --w-rating 0 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
 ```
 
 실행 결과 전체(원문):

@@ -14,6 +14,7 @@
 #define MAX_FIELD 256
 #define MAX_LINE 4096
 #define MAX_MUST_INCLUDE 32
+#define MAX_POOL_COURSES 128
 #define DAY_COUNT 7
 #define SLOT_COUNT_PER_DAY 48
 #define MAX_TREE_NODES 300000
@@ -21,6 +22,7 @@
 #define MAX_TARGET_CREDITS 30
 #define MIN_WEIGHT 0
 #define MAX_WEIGHT 100
+#define DEFAULT_MAX_COURSES 6
 
 typedef struct {
     int day;        /* 0=Mon ... 6=Sun */
@@ -41,12 +43,15 @@ typedef struct {
 
 typedef struct {
     int target_credits;
+    int max_courses_in_timetable;
     int top_n;
     int prefer_free_days;
     int prefer_late_start;
     int prefer_high_rating;
     int must_include_count;
     char must_include_codes[MAX_MUST_INCLUDE][32];
+    int pool_count;
+    char pool_codes[MAX_POOL_COURSES][32];
 } Preference;
 
 typedef struct {
@@ -109,6 +114,7 @@ static int timetable_has_same_group(const Timetable *tt, const Course *course);
 static int can_still_satisfy_all_must(const SearchContext *ctx, int idx, const Timetable *tt);
 static int all_must_include_satisfied(const Timetable *tt, const Preference *pref);
 static int course_matches_any_user_must(const Course *course, const Preference *pref);
+static int course_matches_any_user_pool(const Course *course, const Preference *pref);
 static TreeNode *create_tree_node(SearchContext *ctx, int level, const Timetable *state, const Course *course, int took_course);
 static void destroy_tree(TreeNode *node);
 static void build_and_score_tree(SearchContext *ctx, TreeNode *node);
@@ -464,7 +470,7 @@ float getRating(const Course *c) {
 }
 
 int isLeaf(const SearchNode *node, const Preference *pref) {
-    return node->current.total_credits >= pref->target_credits;
+    return node->current.enrolled_count >= pref->max_courses_in_timetable;
 }
 
 float scoreTimetable(const Timetable *tt, const Preference *pref) {
@@ -565,13 +571,14 @@ int addSch(Timetable *tt, Course *course) {
     return addCourse(tt, course);
 }
 
-static int can_reach_target_with_suffix(const SearchContext *ctx, int idx, int current_credits) {
-    int possible_max = current_credits + ctx->suffix_credits[idx];
-    return possible_max >= ctx->pref->target_credits;
+static int can_reach_target_with_suffix(const SearchContext *ctx, int idx, int current_count) {
+    int remaining_candidates = ctx->course_count - idx;
+    int possible_max = current_count + remaining_candidates;
+    return possible_max >= ctx->pref->max_courses_in_timetable;
 }
 
-static int exceeds_credit_limit(const Preference *pref, int total_credits) {
-    return total_credits > pref->target_credits;
+static int exceeds_credit_limit(const Preference *pref, int course_count) {
+    return course_count > pref->max_courses_in_timetable;
 }
 
 static TreeNode *create_tree_node(SearchContext *ctx, int level, const Timetable *state, const Course *course, int took_course) {
@@ -609,12 +616,12 @@ static void build_and_score_tree(SearchContext *ctx, TreeNode *node) {
     eval_node.current = node->state;
 
     if (isLeaf(&eval_node, ctx->pref)) {
-        if (eval_node.current.total_credits == ctx->pref->target_credits &&
+        if (eval_node.current.enrolled_count == ctx->pref->max_courses_in_timetable &&
             all_must_include_satisfied(&eval_node.current, ctx->pref)) {
             eval_node.current.score = scoreTimetable(&eval_node.current, ctx->pref);
             insertResult(ctx->out, &eval_node.current, ctx->pref->top_n);
         }
-        /* Exact-credit policy: stop exploring below this node once target is reached/exceeded. */
+        /* Exact-course-count policy: stop exploring once max course count is reached. */
         return;
     }
 
@@ -626,14 +633,14 @@ static void build_and_score_tree(SearchContext *ctx, TreeNode *node) {
         return;
     }
 
-    if (!can_reach_target_with_suffix(ctx, idx, eval_node.current.total_credits)) {
+    if (!can_reach_target_with_suffix(ctx, idx, eval_node.current.enrolled_count)) {
         return;
     }
 
     course = (Course *)&ctx->courses[idx];
 
     next_state = eval_node.current;
-    if (!exceeds_credit_limit(ctx->pref, next_state.total_credits + course->credits) && addCourse(&next_state, course)) {
+    if (!exceeds_credit_limit(ctx->pref, next_state.enrolled_count + 1) && addCourse(&next_state, course)) {
         node->include_child = create_tree_node(ctx, idx + 1, &next_state, course, 1);
         if (node->include_child != NULL) {
             build_and_score_tree(ctx, node->include_child);
@@ -655,31 +662,40 @@ void createSch(const Course *courses, int course_count, const Preference *pref, 
     SearchContext ctx;
     Timetable tt;
     int i;
+    Course filtered[MAX_COURSES];
+    int filtered_count = 0;
     Course ordered[MAX_COURSES];
     int w = 0;
 
     memset(&ctx, 0, sizeof(ctx));
-    /* Root-near branching priority: user-required (--must) courses first. */
+    /* If user provided a candidate pool, only search within that pool. */
     for (i = 0; i < course_count; ++i) {
-        if (course_matches_any_user_must(&courses[i], pref)) {
-            ordered[w++] = courses[i];
+        if (course_matches_any_user_pool(&courses[i], pref)) {
+            filtered[filtered_count++] = courses[i];
         }
     }
-    for (i = 0; i < course_count; ++i) {
-        if (!course_matches_any_user_must(&courses[i], pref)) {
-            ordered[w++] = courses[i];
+
+    /* Root-near branching priority: user-required (--must) courses first. */
+    for (i = 0; i < filtered_count; ++i) {
+        if (course_matches_any_user_must(&filtered[i], pref)) {
+            ordered[w++] = filtered[i];
+        }
+    }
+    for (i = 0; i < filtered_count; ++i) {
+        if (!course_matches_any_user_must(&filtered[i], pref)) {
+            ordered[w++] = filtered[i];
         }
     }
 
     ctx.courses = ordered;
-    ctx.course_count = course_count;
+    ctx.course_count = filtered_count;
     ctx.pref = pref;
     ctx.out = out;
     ctx.tree_node_limit = MAX_TREE_NODES;
 
-    ctx.suffix_credits[course_count] = 0;
-    for (i = course_count - 1; i >= 0; --i) {
-        ctx.suffix_credits[i] = ctx.suffix_credits[i + 1] + courses[i].credits;
+    ctx.suffix_credits[filtered_count] = 0;
+    for (i = filtered_count - 1; i >= 0; --i) {
+        ctx.suffix_credits[i] = ctx.suffix_credits[i + 1] + 1;
     }
 
     createTimetable(&tt);
@@ -699,6 +715,7 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
     memset(pref, 0, sizeof(*pref));
 
     pref->target_credits = 18;
+    pref->max_courses_in_timetable = DEFAULT_MAX_COURSES;
     pref->top_n = 5;
     pref->prefer_free_days = 3;
     pref->prefer_late_start = 1;
@@ -725,6 +742,9 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
         } else if (strcmp(argv[i], "--w-rating") == 0 && i + 1 < argc) {
             if (!parse_int_in_range(argv[++i], MIN_WEIGHT, MAX_WEIGHT, "--w-rating", &parsed)) return 0;
             pref->prefer_high_rating = parsed;
+        } else if (strcmp(argv[i], "--max-courses") == 0 && i + 1 < argc) {
+            if (!parse_int_in_range(argv[++i], 1, MAX_ENROLLED, "--max-courses", &parsed)) return 0;
+            pref->max_courses_in_timetable = parsed;
         } else if (strcmp(argv[i], "--must") == 0 && i + 1 < argc) {
             char temp[1024];
             char *tok;
@@ -734,6 +754,17 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
                 trim(tok);
                 snprintf(pref->must_include_codes[pref->must_include_count], sizeof(pref->must_include_codes[pref->must_include_count]), "%s", tok);
                 pref->must_include_count++;
+                tok = strtok(NULL, ",");
+            }
+        } else if (strcmp(argv[i], "--pool") == 0 && i + 1 < argc) {
+            char temp[2048];
+            char *tok;
+            snprintf(temp, sizeof(temp), "%s", argv[++i]);
+            tok = strtok(temp, ",");
+            while (tok != NULL && pref->pool_count < MAX_POOL_COURSES) {
+                trim(tok);
+                snprintf(pref->pool_codes[pref->pool_count], sizeof(pref->pool_codes[pref->pool_count]), "%s", tok);
+                pref->pool_count++;
                 tok = strtok(NULL, ",");
             }
         } else if (strcmp(argv[i], "--self-test") == 0) {
@@ -752,6 +783,11 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
     if (pref->must_include_count > 0 && !top_set_by_user) {
         pref->top_n = MAX_RESULTS;
     }
+    if (pref->must_include_count > pref->max_courses_in_timetable) {
+        fprintf(stderr, "[ERROR] must course count (%d) exceeds --max-courses (%d)\n",
+            pref->must_include_count, pref->max_courses_in_timetable);
+        return 0;
+    }
 
     if (!g_self_test && xlsx_path[0] == '\0') {
         fprintf(stderr, "[ERROR] --xlsx is required unless --self-test is used.\n");
@@ -763,11 +799,11 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
 
 static void print_usage(void) {
     printf("Usage:\n");
-    printf("  timetable.exe --xlsx <path> [--target-credits N] [--top N]\n");
+    printf("  timetable.exe --xlsx <path> [--max-courses N] [--top N]\n");
     printf("               [--w-free N] [--w-late N] [--w-rating N]\n");
-    printf("               [--must TOKEN1,TOKEN2,...] [--self-test]\n");
+    printf("               [--must TOKEN1,TOKEN2,...] [--pool TOKEN1,TOKEN2,...] [--self-test]\n");
     printf("  N type/range:\n");
-    printf("    --target-credits N : integer [%d..%d]\n", MIN_TARGET_CREDITS, MAX_TARGET_CREDITS);
+    printf("    --max-courses N    : integer [1..%d] (default=%d)\n", MAX_ENROLLED, DEFAULT_MAX_COURSES);
     printf("    --top N            : integer [0..%d], 0 means MAX_RESULTS\n", MAX_RESULTS);
     printf("    --w-free N         : integer [%d..%d]\n", MIN_WEIGHT, MAX_WEIGHT);
     printf("    --w-late N         : integer [%d..%d]\n", MIN_WEIGHT, MAX_WEIGHT);
@@ -778,6 +814,9 @@ static void print_usage(void) {
     printf("  required policy:\n");
     printf("    Only --must tokens are treated as required constraints.\n");
     printf("    Category labels (e.g., 전필/전선/일반) are not auto-forced.\n");
+    printf("  search policy:\n");
+    printf("    1) Branch must-course sections first near root.\n");
+    printf("    2) Build timetables with exactly --max-courses courses.\n");
     printf("  note: --top 0 means up to MAX_RESULTS(%d)\n", MAX_RESULTS);
 }
 
@@ -1121,6 +1160,19 @@ static int course_matches_any_user_must(const Course *course, const Preference *
     return 0;
 }
 
+static int course_matches_any_user_pool(const Course *course, const Preference *pref) {
+    int i;
+    if (pref->pool_count <= 0) {
+        return 1;
+    }
+    for (i = 0; i < pref->pool_count; ++i) {
+        if (course_matches_must_token(course, pref->pool_codes[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static const char *day_name(int day) {
     static const char *names[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
     if (day < 0 || day >= DAY_COUNT) return "?";
@@ -1195,6 +1247,7 @@ static int run_self_test(void) {
 
     memset(&p, 0, sizeof(p));
     p.target_credits = 6;
+    p.max_courses_in_timetable = 2;
     p.top_n = 10;
     p.prefer_free_days = 3;
     p.prefer_late_start = 1;
