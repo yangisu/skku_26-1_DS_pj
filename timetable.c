@@ -10,7 +10,7 @@
 #define MAX_COURSES 512
 #define MAX_SLOTS 8
 #define MAX_ENROLLED 16
-#define MAX_RESULTS 32
+#define MAX_RESULTS 512
 #define MAX_FIELD 256
 #define MAX_LINE 4096
 #define MAX_MUST_INCLUDE 32
@@ -84,7 +84,12 @@ static int parse_time_range(const char *token, TimeSlot *slot_out);
 static void normalize_text_field(char *dst, size_t dst_cap, const char *src);
 static int contains_ignore_case(const char *s, const char *needle);
 static int is_required_category(const char *category);
-static int course_is_must_include(const Course *course, const Preference *pref);
+static void get_course_group_key(const char *code, char *out, size_t out_cap);
+static int must_token_is_exact_section(const char *token);
+static int course_matches_must_token(const Course *course, const char *token);
+static int timetable_has_matching_token(const Timetable *tt, const char *token);
+static int timetable_has_same_group(const Timetable *tt, const Course *course);
+static int can_still_satisfy_all_must(const SearchContext *ctx, int idx, const Timetable *tt);
 static int all_must_include_satisfied(const Timetable *tt, const Preference *pref);
 static void print_course(const Course *c);
 static void print_timetable(const Timetable *tt, int rank);
@@ -349,6 +354,9 @@ int addCourse(Timetable *tt, Course *c) {
     if (tt->enrolled_count >= MAX_ENROLLED) {
         return 0;
     }
+    if (timetable_has_same_group(tt, c)) {
+        return 0;
+    }
     if (isConflict(tt, c)) {
         return 0;
     }
@@ -566,6 +574,10 @@ static void dfs_generate(SearchContext *ctx, int idx, Timetable *tt) {
         return;
     }
 
+    if (!can_still_satisfy_all_must(ctx, idx, tt)) {
+        return;
+    }
+
     if (!can_reach_target_with_suffix(ctx, idx, tt->total_credits)) {
         return;
     }
@@ -578,7 +590,7 @@ static void dfs_generate(SearchContext *ctx, int idx, Timetable *tt) {
             removeCourse(tt, course);
         }
 
-        if (!course->is_required && !course_is_must_include(course, ctx->pref)) {
+        if (!course->is_required) {
             dfs_generate(ctx, idx + 1, tt);
         }
     }
@@ -607,6 +619,7 @@ void createSch(const Course *courses, int course_count, const Preference *pref, 
 
 static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_cap, Preference *pref) {
     int i;
+    int top_set_by_user = 0;
     memset(pref, 0, sizeof(*pref));
 
     pref->target_credits = 18;
@@ -624,6 +637,7 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
             pref->target_credits = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--top") == 0 && i + 1 < argc) {
             pref->top_n = atoi(argv[++i]);
+            top_set_by_user = 1;
         } else if (strcmp(argv[i], "--w-free") == 0 && i + 1 < argc) {
             pref->prefer_free_days = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--w-late") == 0 && i + 1 < argc) {
@@ -652,8 +666,11 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
         }
     }
 
-    if (pref->top_n <= 0) pref->top_n = 1;
+    if (pref->top_n <= 0) pref->top_n = MAX_RESULTS;
     if (pref->top_n > MAX_RESULTS) pref->top_n = MAX_RESULTS;
+    if (pref->must_include_count > 0 && !top_set_by_user) {
+        pref->top_n = MAX_RESULTS;
+    }
 
     if (!g_self_test && xlsx_path[0] == '\0') {
         fprintf(stderr, "[ERROR] --xlsx is required unless --self-test is used.\n");
@@ -667,7 +684,11 @@ static void print_usage(void) {
     printf("Usage:\n");
     printf("  timetable.exe --xlsx <path> [--target-credits N] [--top N]\\n");
     printf("               [--w-free N] [--w-late N] [--w-rating N]\\n");
-    printf("               [--must CODE1,CODE2,...] [--self-test]\\n");
+    printf("               [--must TOKEN1,TOKEN2,...] [--self-test]\\n");
+    printf("  must token example:\\n");
+    printf("    COM3026     -> any one section of COM3026\\n");
+    printf("    COM3026-02  -> exact section COM3026-02\\n");
+    printf("  note: --top 0 means up to MAX_RESULTS(%d)\\n", MAX_RESULTS);
 }
 
 static void trim(char *s) {
@@ -875,28 +896,107 @@ static int is_required_category(const char *category) {
     return 0;
 }
 
-static int course_is_must_include(const Course *course, const Preference *pref) {
+static void get_course_group_key(const char *code, char *out, size_t out_cap) {
+    const char *dash;
+    size_t n;
+    if (code == NULL || code[0] == '\0') {
+        out[0] = '\0';
+        return;
+    }
+    dash = strrchr(code, '-');
+    if (dash == NULL || dash == code) {
+        snprintf(out, out_cap, "%s", code);
+        return;
+    }
+    n = (size_t)(dash - code);
+    if (n >= out_cap) n = out_cap - 1;
+    memcpy(out, code, n);
+    out[n] = '\0';
+}
+
+static int must_token_is_exact_section(const char *token) {
+    return token != NULL && strchr(token, '-') != NULL;
+}
+
+static int course_matches_must_token(const Course *course, const char *token) {
+    char course_group[32];
+    char token_group[32];
+    if (course == NULL || token == NULL) return 0;
+    if (must_token_is_exact_section(token)) {
+        return strcmp(course->code, token) == 0;
+    }
+    get_course_group_key(course->code, course_group, sizeof(course_group));
+    get_course_group_key(token, token_group, sizeof(token_group));
+    return strcmp(course_group, token_group) == 0;
+}
+
+static int timetable_has_matching_token(const Timetable *tt, const char *token) {
     int i;
-    for (i = 0; i < pref->must_include_count; ++i) {
-        if (strcmp(course->code, pref->must_include_codes[i]) == 0) {
+    for (i = 0; i < tt->enrolled_count; ++i) {
+        if (course_matches_must_token(tt->enrolled[i], token)) {
             return 1;
         }
     }
     return 0;
 }
 
-static int all_must_include_satisfied(const Timetable *tt, const Preference *pref) {
+static int timetable_has_same_group(const Timetable *tt, const Course *course) {
     int i;
-    for (i = 0; i < pref->must_include_count; ++i) {
-        int found = 0;
+    char group_a[32];
+    char group_b[32];
+    get_course_group_key(course->code, group_a, sizeof(group_a));
+    for (i = 0; i < tt->enrolled_count; ++i) {
+        get_course_group_key(tt->enrolled[i]->code, group_b, sizeof(group_b));
+        if (strcmp(group_a, group_b) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int can_still_satisfy_all_must(const SearchContext *ctx, int idx, const Timetable *tt) {
+    int i;
+    for (i = 0; i < ctx->pref->must_include_count; ++i) {
+        const char *token = ctx->pref->must_include_codes[i];
         int j;
-        for (j = 0; j < tt->enrolled_count; ++j) {
-            if (strcmp(tt->enrolled[j]->code, pref->must_include_codes[i]) == 0) {
-                found = 1;
+        int possible = 0;
+        if (timetable_has_matching_token(tt, token)) {
+            continue;
+        }
+
+        if (must_token_is_exact_section(token)) {
+            char token_group[32];
+            get_course_group_key(token, token_group, sizeof(token_group));
+            for (j = 0; j < tt->enrolled_count; ++j) {
+                char enrolled_group[32];
+                get_course_group_key(tt->enrolled[j]->code, enrolled_group, sizeof(enrolled_group));
+                if (strcmp(token_group, enrolled_group) == 0) {
+                    possible = 0;
+                    break;
+                }
+            }
+            if (j < tt->enrolled_count) {
+                return 0;
+            }
+        }
+
+        for (j = idx; j < ctx->course_count; ++j) {
+            if (course_matches_must_token(&ctx->courses[j], token)) {
+                possible = 1;
                 break;
             }
         }
-        if (!found) return 0;
+        if (!possible) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int all_must_include_satisfied(const Timetable *tt, const Preference *pref) {
+    int i;
+    for (i = 0; i < pref->must_include_count; ++i) {
+        if (!timetable_has_matching_token(tt, pref->must_include_codes[i])) return 0;
     }
     return 1;
 }
@@ -954,31 +1054,51 @@ static int timetable_equal_key(const Timetable *a, const Timetable *b) {
 }
 
 static int run_self_test(void) {
-    Course a = {"A", "Alpha", "REQ", 3, 4.2f, 1, 1, {{0, 540, 615}}};
-    Course b = {"B", "Beta", "SEL", 3, 3.9f, 0, 1, {{0, 570, 645}}};
-    Course c = {"C", "Gamma", "SEL", 3, 4.5f, 0, 1, {{1, 540, 615}}};
-    Course list[3];
+    Course a = {"A-01", "Alpha", "REQ", 3, 4.2f, 1, 1, {{0, 540, 615}}};
+    Course b = {"A-02", "Alpha", "SEL", 3, 3.9f, 0, 1, {{0, 660, 735}}};
+    Course c = {"B-01", "Beta", "SEL", 3, 4.5f, 0, 1, {{1, 540, 615}}};
+    Course d = {"C-01", "Gamma", "SEL", 3, 4.0f, 0, 1, {{0, 570, 645}}};
+    Course list[4];
     Preference p;
     ResultSet rs;
     Timetable tt;
+    int i;
 
-    list[0] = a; list[1] = b; list[2] = c;
+    list[0] = a; list[1] = b; list[2] = c; list[3] = d;
 
     createTimetable(&tt);
     if (!addCourse(&tt, &list[0])) return 0;
-    if (addCourse(&tt, &list[1])) return 0; /* must conflict */
+    if (addCourse(&tt, &list[1])) return 0; /* same course group should be rejected */
     if (!addCourse(&tt, &list[2])) return 0;
+    if (addCourse(&tt, &list[3])) return 0; /* must conflict */
     if (getTotalCredits(&tt) != 6) return 0;
 
     memset(&p, 0, sizeof(p));
     p.target_credits = 6;
-    p.top_n = 2;
+    p.top_n = 10;
     p.prefer_free_days = 3;
     p.prefer_late_start = 1;
     p.prefer_high_rating = 3;
+    p.must_include_count = 1;
+    snprintf(p.must_include_codes[0], sizeof(p.must_include_codes[0]), "A");
 
-    createSch(list, 3, &p, &rs);
+    createSch(list, 4, &p, &rs);
     if (rs.count <= 0) return 0;
+    for (i = 0; i < rs.count; ++i) {
+        int has_group_a = 0;
+        int section_count_a = 0;
+        int j;
+        for (j = 0; j < rs.items[i].enrolled_count; ++j) {
+            char g[32];
+            get_course_group_key(rs.items[i].enrolled[j]->code, g, sizeof(g));
+            if (strcmp(g, "A") == 0) {
+                has_group_a = 1;
+                section_count_a++;
+            }
+        }
+        if (!has_group_a) return 0;
+        if (section_count_a != 1) return 0;
+    }
 
     printf("[SELF-TEST] all checks passed (%d results)\n", rs.count);
     return 1;
