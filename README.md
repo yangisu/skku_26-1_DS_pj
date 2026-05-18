@@ -235,54 +235,27 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 - 온라인 과목 정책(완전 자유/시간대 제한) 선택 옵션 추가
 - 점수 세부 항목(공강/시작시간/평점) 분해 출력 강화
 
-## 14. 실데이터 테스트 기록 (`전공수업.xlsx` + 6개 필수 과목)
-테스트 입력 파일:
-- `C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx`
 
-사진 기준 필수 6과목:
-- 기본프로그래밍
-- 컴퓨터교육개론
-- 피지컬컴퓨팅
-- 머신러닝
-- 자연어처리
-- 교육용멀티미디어
+## 14. 테스트
+테스트 입력:
+- 필수: 기본프로그래밍, 컴퓨터교육개론, 피지컬 컴퓨팅
+- 고려 풀: 기계학습, 교육용멀티미디어, 운영체제, 컴퓨터네트워크
+- 가중치: 공강(`--w-free`) 100, 나머지(`--w-late`, `--w-rating`) 0
+- 과목 수 제한: 6개
 
-코드 매핑:
-- 기본프로그래밍 -> `COM2002` (`COM2002-01`, `COM2002-02` 분반 존재)
-- 컴퓨터교육개론 -> `COM2003-01`
-- 피지컬컴퓨팅 -> `COM2015-01`
-- 머신러닝 -> `COM2020-01`
-- 자연어처리 -> `COM2023-01`
-- 교육용멀티미디어 -> `COM3001-01`
-
-### 14-1. 실행 과정
-1. 빌드:
-```powershell
-zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
-```
-2. 분반 자유(기본프로그래밍은 아무 분반이나 허용):
-```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 10 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
-```
-3. 분반 고정(기본프로그래밍 01분반 강제):
-```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 3 --must "COM2002-01,COM2003,COM2015,COM2020,COM2023,COM3001"
-```
-
-### 14-2. 요청 조건 실행 (가중치: 늦은 시작만 높게)
 실행 명령:
 ```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 10 --w-free 0 --w-late 100 --w-rating 0 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 20 --w-free 100 --w-late 0 --w-rating 0 --must "기본프로그래밍,컴퓨터교육개론,피지컬 컴퓨팅" --pool "기계학습,교육용멀티미디어,운영체제,컴퓨터네트워크"
 ```
 
-실행 결과 전체(원문):
+실행 결과 원문:
 ```text
 Loaded courses: 26
-[TREE] explicit nodes created: 26
+[TREE] explicit nodes created: 42
 
 ========== Rank 1 ==========
 Total Credits: 18
-Score: 1200.00
+Score: 100.00
 Courses (6):
   - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
       time: Fri 10:30-11:45
@@ -292,18 +265,39 @@ Courses (6):
   - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
       time: Mon 09:00-10:15
       time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
-  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+  - AAI3006-01 | 기계학습 | 국제어수업 | 3cr
+      time: Mon 18:00-19:15
+  - COM3005-01 | 운영체제 | 국제어수업 | 3cr
       time: Fri 12:00-13:15
       time: Fri 13:30-14:45
+  - COM3006-01 | 컴퓨터네트워크 | 일반수업 | 3cr
+      time: Thu 18:00-19:15
+      time: Thu 19:30-20:45
 
 ========== Rank 2 ==========
 Total Credits: 18
-Score: 1140.00
+Score: 100.00
+Courses (6):
+  - COM2002-02 | 기본프로그래밍 | 일반수업 | 3cr
+      time: Fri 10:30-11:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
+  - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - AAI3006-01 | 기계학습 | 국제어수업 | 3cr
+      time: Mon 18:00-19:15
+  - COM3006-01 | 컴퓨터네트워크 | 일반수업 | 3cr
+      time: Thu 18:00-19:15
+      time: Thu 19:30-20:45
+
+========== Rank 3 ==========
+Total Credits: 18
+Score: 0.00
 Courses (6):
   - COM2002-01 | 기본프로그래밍 | 국제어수업 | 3cr
       time: Wed 13:30-14:45
@@ -313,42 +307,33 @@ Courses (6):
   - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
       time: Mon 09:00-10:15
       time: Mon 10:30-11:45
-  - COM2020-01 | 머신러닝 | 일반수업 | 3cr
-      time: Wed 18:00-19:15
-      time: Wed 19:30-20:45
-  - COM2023-01 | 자연어처리 | 국제어수업 | 3cr
-      time: Thu 13:30-14:45
+  - AAI3006-01 | 기계학습 | 국제어수업 | 3cr
+      time: Mon 18:00-19:15
+  - COM3005-01 | 운영체제 | 국제어수업 | 3cr
+      time: Fri 12:00-13:15
+      time: Fri 13:30-14:45
+  - COM3006-01 | 컴퓨터네트워크 | 일반수업 | 3cr
+      time: Thu 18:00-19:15
+      time: Thu 19:30-20:45
+
+========== Rank 4 ==========
+Total Credits: 18
+Score: 0.00
+Courses (6):
+  - COM2002-01 | 기본프로그래밍 | 국제어수업 | 3cr
+      time: Wed 13:30-14:45
+  - COM2003-01 | 컴퓨터교육개론 | 국제어수업 | 3cr
+      time: Tue 09:00-10:15
+      time: Tue 10:30-11:45
+  - COM2015-01 | 피지컬컴퓨팅 | 국제어수업 | 3cr
+      time: Mon 09:00-10:15
+      time: Mon 10:30-11:45
   - COM3001-01 | 교육용멀티미디어 | 일반수업 | 3cr
       time: Fri 12:00-13:15
       time: Fri 13:30-14:45
+  - AAI3006-01 | 기계학습 | 국제어수업 | 3cr
+      time: Mon 18:00-19:15
+  - COM3006-01 | 컴퓨터네트워크 | 일반수업 | 3cr
+      time: Thu 18:00-19:15
+      time: Thu 19:30-20:45
 ```
-
-### 14-3. 현재 실행 결과 출력 형태
-프로그램 출력은 아래 순서로 고정됩니다.
-1. `Loaded courses: <개수>`
-2. `[TREE] explicit nodes created: <노드 수>`
-3. `Rank 1..N` 블록 반복
-4. 각 Rank 블록 내부:
-- `Total Credits`
-- `Score`
-- `Courses (k)` (시간표에 담긴 과목 수)
-- 과목별 라인: `과목코드 | 과목명 | 수업구분 | 학점`
-- 시간 라인: `time: 요일 시작-종료` (복수 시간대면 여러 줄)
-
-## 15. 요청 시나리오 테스트 (필수 3 + 고려 풀 4, 공강 최우선)
-요청 입력:
-- 필수: 기본프로그래밍, 컴퓨터교육개론, 피지컬 컴퓨팅
-- 고려 풀: 기계학습, 교육용멀티미디어, 운영체제, 컴퓨터네트워크
-- 가중치: 공강(`--w-free`) 최우선, 나머지 0
-- 총 과목 수: 6개
-
-실행 명령:
-```powershell
-.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --max-courses 6 --top 20 --w-free 100 --w-late 0 --w-rating 0 --must "기본프로그래밍,컴퓨터교육개론,피지컬 컴퓨팅" --pool "기계학습,교육용멀티미디어,운영체제,컴퓨터네트워크"
-```
-
-확인 포인트:
-- 필수 3개는 항상 포함됨
-- 나머지 3개는 고려 풀 4개 중에서만 선택됨
-- 결과는 점수 내림차순으로 정렬됨
-- 루트 근처 분기에서 필수 과목 분반(`기본프로그래밍`의 01/02)이 먼저 갈라짐
