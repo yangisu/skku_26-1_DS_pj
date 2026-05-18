@@ -87,6 +87,89 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 - 따라서 분반이 3개인 과목을 `--must COM3026`으로 주면, 3개 분반 중 하나를 선택한 가지들로 시간표가 분화됩니다.
 - `--must`를 사용하고 `--top`을 따로 주지 않으면, 프로그램은 가능한 결과를 넓게 보여주기 위해 자동으로 최대치(`MAX_RESULTS`)까지 출력합니다.
 
+## 7-1. 코드 흐름(트리가 실제로 어떻게 진행되는지)
+1. `main`이 인자를 파싱하고 `loadCoursesFromXlsx`로 과목 배열을 만듭니다.
+2. `createSch`에서 과목 순서를 재배치합니다.
+- 먼저 `--must`에 매칭되는 과목(분반 포함)을 앞쪽에 배치
+- 나머지 과목을 뒤에 배치
+3. 루트 노드(`TreeNode`)를 생성합니다.
+- `level=0`
+- `state=빈 시간표`
+- `decision_course=NULL`, `took_course=0`
+4. `build_and_score_tree`가 노드를 확장합니다.
+- 현재 `level`의 과목에 대해 자식 노드 분기:
+- `include_child`: 해당 과목을 시간표에 추가한 상태
+- `exclude_child`: 해당 과목을 추가하지 않은 상태
+5. 가지치기 조건에 걸리면 그 노드 아래는 더 이상 확장하지 않습니다.
+6. 리프/완성 후보에서 점수를 계산해 `ResultSet`에 삽입합니다.
+7. 탐색 종료 후 점수 상위 `top_n`개 시간표를 출력합니다.
+
+실행 로그의 `[TREE] explicit nodes created: ...`는 실제 생성된 명시적 노드 수입니다.
+
+## 7-2. 노드에 들어가는 데이터와 자식 분화
+`TreeNode` 필드:
+- `level`: 현재 몇 번째 과목을 결정 중인지
+- `state`: 지금까지 선택 결과가 반영된 `Timetable` 상태
+- `decision_course`: 이 노드에서 결정 대상으로 본 과목 포인터
+- `took_course`: `1`이면 포함 분기, `0`이면 제외 분기
+- `include_child`, `exclude_child`: 다음 분기 노드
+
+자식 노드 개수:
+- 기본적으로 최대 2개(포함/제외)
+- 단, 포함 분기는 `addCourse` 실패(시간충돌/같은 과목 그룹 중복) 시 생성되지 않음
+- 제외 분기는 현재 구현에서 항상 시도
+
+## 7-3. 기본 자료형(ADT) 구조 요약
+- `TimeSlot`: 요일/시작분/종료분
+- `Course`: 과목 코드, 이름, 카테고리, 학점, 평점, 시간슬롯들
+- `Preference`: 목표학점, top_n, 가중치, `--must` 토큰 목록
+- `Timetable`: 현재 담긴 과목 목록, 총학점, 시간 점유표, 점수
+- `TreeNode`: 명시적 탐색 노드
+- `ResultSet`: 최종 후보 시간표 상위 목록
+- `SearchContext`: 탐색 중 공통 참조(과목 배열, 우선순위, 결과 버퍼, suffix 학점 등)
+
+## 7-4. 탐색 기준(확장/중단 판단)
+포함 분기 생성 조건:
+- `addCourse` 성공 필요
+- 실패 사유: 시간 충돌(`isConflict`) 또는 같은 과목 그룹 분반 중복
+
+노드 확장 중단(가지치기) 조건:
+- 남은 과목으로 목표학점 도달 불가 (`can_reach_target_with_suffix`)
+- 앞으로 가도 `--must`를 만족시킬 수 없음 (`can_still_satisfy_all_must`)
+- 목표학점 초과 폭이 제한 초과
+
+결과 저장 조건:
+- `isLeaf`로 목표학점 이상 도달
+- `all_must_include_satisfied`로 `--must` 전부 충족
+- `scoreTimetable` 점수 계산 후 `insertResult`로 상위 결과 유지
+
+## 7-5. 함수 설명(핵심)
+입력/전처리:
+- `parse_args`: CLI 인자 파싱 및 범위 검증
+- `loadCoursesFromXlsx`: 엑셀을 CSV로 변환 후 `Course` 배열 생성
+
+시간표 ADT:
+- `createTimetable`: 빈 시간표 초기화
+- `isConflict`: 시간표와 과목 시간 충돌 검사
+- `addCourse`: 충돌/분반중복이 없으면 과목 추가
+- `removeCourse`: 과목 제거(탐색 복원용)
+- `getTotalCredits`, `getSchedule`, `getRating`: 조회 함수
+
+트리 탐색:
+- `createSch`: `--must` 우선 정렬 + 루트 생성 + 전체 탐색 시작
+- `create_tree_node`: 명시적 노드 생성
+- `build_and_score_tree`: 포함/제외 분기 확장 및 재귀 탐색
+- `destroy_tree`: 생성 노드 메모리 해제
+
+필수/분반 정책:
+- `course_matches_must_token`: `COM3026`/`COM3026-02` 매칭 규칙
+- `can_still_satisfy_all_must`: 앞으로 `--must` 충족 가능성 검사
+- `all_must_include_satisfied`: 결과 노드의 `--must` 최종 충족 검사
+
+점수/결과:
+- `scoreTimetable`: 가중치 기반 점수 계산
+- `insertResult`: 점수순 상위 `N`개 유지
+
 ## 8. 입력 파일(`.xlsx`) 처리 방식
 - 프로그램은 `.xlsx`를 직접 입력받습니다.
 - 내부에서 1번 시트를 임시 CSV로 변환 후 파싱합니다.
