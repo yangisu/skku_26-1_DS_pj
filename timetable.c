@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
+#include <wctype.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -106,6 +108,10 @@ static int parse_time_range(const char *token, TimeSlot *slot_out);
 static void normalize_text_field(char *dst, size_t dst_cap, const char *src);
 static int contains_ignore_case(const char *s, const char *needle);
 static int is_required_category(const char *category);
+static void compact_text_no_space(const char *src, char *dst, size_t cap);
+#ifdef _WIN32
+static int wide_compact_equal_utf8_vs_local(const char *utf8_text, const char *local_text);
+#endif
 static void get_course_group_key(const char *code, char *out, size_t out_cap);
 static int must_token_is_exact_section(const char *token);
 static int course_matches_must_token(const Course *course, const char *token);
@@ -670,7 +676,7 @@ void createSch(const Course *courses, int course_count, const Preference *pref, 
     memset(&ctx, 0, sizeof(ctx));
     /* If user provided a candidate pool, only search within that pool. */
     for (i = 0; i < course_count; ++i) {
-        if (course_matches_any_user_pool(&courses[i], pref)) {
+        if (course_matches_any_user_pool(&courses[i], pref) || course_matches_any_user_must(&courses[i], pref)) {
             filtered[filtered_count++] = courses[i];
         }
     }
@@ -948,6 +954,56 @@ static void normalize_text_field(char *dst, size_t dst_cap, const char *src) {
     dst[j] = '\0';
 }
 
+static void compact_text_no_space(const char *src, char *dst, size_t cap) {
+    size_t j = 0;
+    size_t i;
+    if (cap == 0) return;
+    if (src == NULL) {
+        dst[0] = '\0';
+        return;
+    }
+    for (i = 0; src[i] != '\0' && j + 1 < cap; ++i) {
+        if (!isspace((unsigned char)src[i])) {
+            dst[j++] = src[i];
+        }
+    }
+    dst[j] = '\0';
+}
+
+#ifdef _WIN32
+static int compact_wide_inplace(wchar_t *s) {
+    int r = 0;
+    int w = 0;
+    if (s == NULL) return 0;
+    while (s[r] != L'\0') {
+        if (!iswspace(s[r])) {
+            s[w++] = s[r];
+        }
+        r++;
+    }
+    s[w] = L'\0';
+    return w;
+}
+
+static int wide_compact_equal_utf8_vs_local(const char *utf8_text, const char *local_text) {
+    wchar_t w_utf8[256];
+    wchar_t w_local[256];
+    int n1;
+    int n2;
+    if (utf8_text == NULL || local_text == NULL) return 0;
+
+    n1 = MultiByteToWideChar(CP_UTF8, 0, utf8_text, -1, w_utf8, (int)(sizeof(w_utf8) / sizeof(wchar_t)));
+    if (n1 <= 0) return 0;
+
+    n2 = MultiByteToWideChar(CP_ACP, 0, local_text, -1, w_local, (int)(sizeof(w_local) / sizeof(wchar_t)));
+    if (n2 <= 0) return 0;
+
+    compact_wide_inplace(w_utf8);
+    compact_wide_inplace(w_local);
+    return wcscmp(w_utf8, w_local) == 0;
+}
+#endif
+
 static int parse_day_token(const char *token) {
     if (token == NULL || token[0] == '\0') return -1;
 
@@ -1070,13 +1126,28 @@ static int must_token_is_exact_section(const char *token) {
 static int course_matches_must_token(const Course *course, const char *token) {
     char course_group[32];
     char token_group[32];
+    char course_name_compact[128];
+    char token_compact[128];
     if (course == NULL || token == NULL) return 0;
     if (must_token_is_exact_section(token)) {
         return strcmp(course->code, token) == 0;
     }
     get_course_group_key(course->code, course_group, sizeof(course_group));
     get_course_group_key(token, token_group, sizeof(token_group));
-    return strcmp(course_group, token_group) == 0;
+    if (strcmp(course_group, token_group) == 0) {
+        return 1;
+    }
+    compact_text_no_space(course->name, course_name_compact, sizeof(course_name_compact));
+    compact_text_no_space(token, token_compact, sizeof(token_compact));
+    if (course_name_compact[0] != '\0' && strcmp(course_name_compact, token_compact) == 0) {
+        return 1;
+    }
+#ifdef _WIN32
+    if (wide_compact_equal_utf8_vs_local(course->name, token)) {
+        return 1;
+    }
+#endif
+    return 0;
 }
 
 static int timetable_has_matching_token(const Timetable *tt, const char *token) {
