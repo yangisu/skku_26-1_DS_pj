@@ -18,6 +18,10 @@
 #define SLOT_COUNT_PER_DAY 48
 #define MAX_CREDIT_OVERFLOW 3
 #define MAX_TREE_NODES 300000
+#define MIN_TARGET_CREDITS 1
+#define MAX_TARGET_CREDITS 30
+#define MIN_WEIGHT 0
+#define MAX_WEIGHT 100
 
 typedef struct {
     int day;        /* 0=Mon ... 6=Sun */
@@ -88,6 +92,7 @@ static int g_self_test = 0;
 
 static void print_usage(void);
 static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_cap, Preference *pref);
+static int parse_int_in_range(const char *text, int min_value, int max_value, const char *opt_name, int *out_value);
 static void trim(char *s);
 static int starts_with_ignore_case(const char *s, const char *prefix);
 static int parse_csv_line(const char *line, char fields[][MAX_FIELD], int max_fields);
@@ -679,6 +684,7 @@ void createSch(const Course *courses, int course_count, const Preference *pref, 
 static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_cap, Preference *pref) {
     int i;
     int top_set_by_user = 0;
+    int parsed = 0;
     memset(pref, 0, sizeof(*pref));
 
     pref->target_credits = 18;
@@ -693,16 +699,21 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
         if (strcmp(argv[i], "--xlsx") == 0 && i + 1 < argc) {
             snprintf(xlsx_path, xlsx_path_cap, "%s", argv[++i]);
         } else if (strcmp(argv[i], "--target-credits") == 0 && i + 1 < argc) {
-            pref->target_credits = atoi(argv[++i]);
+            if (!parse_int_in_range(argv[++i], MIN_TARGET_CREDITS, MAX_TARGET_CREDITS, "--target-credits", &parsed)) return 0;
+            pref->target_credits = parsed;
         } else if (strcmp(argv[i], "--top") == 0 && i + 1 < argc) {
-            pref->top_n = atoi(argv[++i]);
+            if (!parse_int_in_range(argv[++i], 0, MAX_RESULTS, "--top", &parsed)) return 0;
+            pref->top_n = parsed;
             top_set_by_user = 1;
         } else if (strcmp(argv[i], "--w-free") == 0 && i + 1 < argc) {
-            pref->prefer_free_days = atoi(argv[++i]);
+            if (!parse_int_in_range(argv[++i], MIN_WEIGHT, MAX_WEIGHT, "--w-free", &parsed)) return 0;
+            pref->prefer_free_days = parsed;
         } else if (strcmp(argv[i], "--w-late") == 0 && i + 1 < argc) {
-            pref->prefer_late_start = atoi(argv[++i]);
+            if (!parse_int_in_range(argv[++i], MIN_WEIGHT, MAX_WEIGHT, "--w-late", &parsed)) return 0;
+            pref->prefer_late_start = parsed;
         } else if (strcmp(argv[i], "--w-rating") == 0 && i + 1 < argc) {
-            pref->prefer_high_rating = atoi(argv[++i]);
+            if (!parse_int_in_range(argv[++i], MIN_WEIGHT, MAX_WEIGHT, "--w-rating", &parsed)) return 0;
+            pref->prefer_high_rating = parsed;
         } else if (strcmp(argv[i], "--must") == 0 && i + 1 < argc) {
             char temp[1024];
             char *tok;
@@ -718,7 +729,7 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
             g_self_test = 1;
         } else if (strcmp(argv[i], "--help") == 0) {
             print_usage();
-            return 0;
+            return -1;
         } else {
             fprintf(stderr, "[ERROR] Unknown argument: %s\n", argv[i]);
             return 0;
@@ -741,13 +752,39 @@ static int parse_args(int argc, char **argv, char *xlsx_path, size_t xlsx_path_c
 
 static void print_usage(void) {
     printf("Usage:\n");
-    printf("  timetable.exe --xlsx <path> [--target-credits N] [--top N]\\n");
-    printf("               [--w-free N] [--w-late N] [--w-rating N]\\n");
-    printf("               [--must TOKEN1,TOKEN2,...] [--self-test]\\n");
-    printf("  must token example:\\n");
-    printf("    COM3026     -> any one section of COM3026\\n");
-    printf("    COM3026-02  -> exact section COM3026-02\\n");
-    printf("  note: --top 0 means up to MAX_RESULTS(%d)\\n", MAX_RESULTS);
+    printf("  timetable.exe --xlsx <path> [--target-credits N] [--top N]\n");
+    printf("               [--w-free N] [--w-late N] [--w-rating N]\n");
+    printf("               [--must TOKEN1,TOKEN2,...] [--self-test]\n");
+    printf("  N type/range:\n");
+    printf("    --target-credits N : integer [%d..%d]\n", MIN_TARGET_CREDITS, MAX_TARGET_CREDITS);
+    printf("    --top N            : integer [0..%d], 0 means MAX_RESULTS\n", MAX_RESULTS);
+    printf("    --w-free N         : integer [%d..%d]\n", MIN_WEIGHT, MAX_WEIGHT);
+    printf("    --w-late N         : integer [%d..%d]\n", MIN_WEIGHT, MAX_WEIGHT);
+    printf("    --w-rating N       : integer [%d..%d]\n", MIN_WEIGHT, MAX_WEIGHT);
+    printf("  must token example:\n");
+    printf("    COM3026     -> any one section of COM3026\n");
+    printf("    COM3026-02  -> exact section COM3026-02\n");
+    printf("  note: --top 0 means up to MAX_RESULTS(%d)\n", MAX_RESULTS);
+}
+
+static int parse_int_in_range(const char *text, int min_value, int max_value, const char *opt_name, int *out_value) {
+    char *endptr = NULL;
+    long v;
+    if (text == NULL || text[0] == '\0') {
+        fprintf(stderr, "[ERROR] %s requires an integer value.\n", opt_name);
+        return 0;
+    }
+    v = strtol(text, &endptr, 10);
+    if (endptr == text || *endptr != '\0') {
+        fprintf(stderr, "[ERROR] %s expects a decimal integer, got: %s\n", opt_name, text);
+        return 0;
+    }
+    if (v < min_value || v > max_value) {
+        fprintf(stderr, "[ERROR] %s out of range: %ld (allowed: %d..%d)\n", opt_name, v, min_value, max_value);
+        return 0;
+    }
+    *out_value = (int)v;
+    return 1;
 }
 
 static void trim(char *s) {
@@ -1171,9 +1208,15 @@ int main(int argc, char **argv) {
     ResultSet results;
     int i;
 
-    if (!parse_args(argc, argv, xlsx_path, sizeof(xlsx_path), &pref)) {
-        print_usage();
-        return 1;
+    {
+        int parse_rc = parse_args(argc, argv, xlsx_path, sizeof(xlsx_path), &pref);
+        if (parse_rc < 0) {
+            return 0;
+        }
+        if (parse_rc == 0) {
+            print_usage();
+            return 1;
+        }
     }
 
     if (g_self_test) {
