@@ -224,3 +224,51 @@ zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
 - 입력 컬럼 매핑을 설정 파일로 분리
 - 온라인 과목 정책(완전 자유/시간대 제한) 선택 옵션 추가
 - 점수 세부 항목(공강/시작시간/평점) 분해 출력 강화
+
+## 14. 실데이터 테스트 기록 (`전공수업.xlsx` + 6개 필수 과목)
+테스트 입력 파일:
+- `C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx`
+
+사진 기준 필수 6과목:
+- 기본프로그래밍
+- 컴퓨터교육개론
+- 피지컬컴퓨팅
+- 머신러닝
+- 자연어처리
+- 교육용멀티미디어
+
+코드 매핑:
+- 기본프로그래밍 -> `COM2002` (`COM2002-01`, `COM2002-02` 분반 존재)
+- 컴퓨터교육개론 -> `COM2003-01`
+- 피지컬컴퓨팅 -> `COM2015-01`
+- 머신러닝 -> `COM2020-01`
+- 자연어처리 -> `COM2023-01`
+- 교육용멀티미디어 -> `COM3001-01`
+
+### 14-1. 실행 과정
+1. 빌드:
+```powershell
+zig cc -std=c17 -O2 -Wall timetable.c -o timetable.exe
+```
+2. 분반 자유(기본프로그래밍은 아무 분반이나 허용):
+```powershell
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 10 --must "COM2002,COM2003,COM2015,COM2020,COM2023,COM3001"
+```
+3. 분반 고정(기본프로그래밍 01분반 강제):
+```powershell
+.\timetable.exe --xlsx "C:\Users\yangi\Documents\카카오톡 받은 파일\전공수업.xlsx" --target-credits 18 --top 3 --must "COM2002-01,COM2003,COM2015,COM2020,COM2023,COM3001"
+```
+
+### 14-2. 실행 결과 요약
+- 케이스 A (`COM2002` 분반 자유):
+  - 로그: `Loaded courses: 26`, `[TREE] explicit nodes created: 348`
+  - 상위 결과에서 기본프로그래밍은 `COM2002-02` 분반이 선택됨
+  - Top 결과는 6개 필수 + 추가 1과목 형태로 총 21학점
+- 케이스 B (`COM2002-01` 분반 고정):
+  - 로그: `Loaded courses: 26`, `[TREE] explicit nodes created: 177`
+  - 지정한 `COM2002-01`이 포함된 시간표가 정상 생성됨
+  - 역시 상위 결과는 총 21학점
+
+참고:
+- 현재 구현은 `target-credits`를 만족한 뒤에도 일정 범위(최대 +3학점)까지 탐색을 이어갈 수 있어, `18`을 넣어도 `21`학점 결과가 상위로 나올 수 있습니다.
+- 위 두 테스트 모두 6개 필수 과목(`--must`)이 전부 포함된 시간표만 출력되는 것을 확인했습니다.
